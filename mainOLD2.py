@@ -3,74 +3,8 @@ from typing import Dict, Any, List, Optional
 # from fastmcp.server import MCP, Toolì
 from fastapi import FastAPI, UploadFile, File, Form
 from rules.detectors import is_number_like, to_float, first_data_row, choose_columns_by_pattern
-
-# Import the improved normalisation logic
-try:
-    # excel_model_improved is a local module providing an enhanced column selection algorithm.
-    from excel_model_improved import normalise_table, Profile
-except Exception:
-    # If the improved module isn't available (e.g. in certain runtime contexts),
-    # fall back to None.  The legacy heuristics will still operate.
-    normalise_table = None
-    Profile = None
-
-def _convert_profile_for_improved(profile: Optional[dict]) -> Optional[dict]:
-    """
-    Convert the legacy YAML profile into a dictionary compatible with
-    excel_model_improved.Profile.from_dict.  This helper extracts the
-    supplier-specific overrides such as preferred headers and bad price
-    headers.  It returns None if no conversion is possible or if the
-    improved module is unavailable.
-    """
-    if profile is None or Profile is None:
-        return None
-    result: Dict[str, object] = {}
-    # Map mapping synonyms to preferred headers
-    mapping = profile.get("mapping") if isinstance(profile.get("mapping"), dict) else {}
-    def add_to_list(dic: Dict[str, object], key: str, values: Any) -> None:
-        if values is None:
-            return
-        if key not in dic or dic[key] is None:
-            dic[key] = []
-        target = dic[key]
-        if isinstance(values, list):
-            target.extend([v for v in values if v])
-        else:
-            target.append(values)
-    # synonyms for codigo, nombre, precio become strong preferences in improved algorithm
-    if "codigo" in mapping:
-        add_to_list(result, "prefer_code_headers", mapping["codigo"])
-    if "nombre" in mapping:
-        add_to_list(result, "prefer_name_headers", mapping["nombre"])
-    if "precio" in mapping:
-        add_to_list(result, "prefer_price_headers", mapping["precio"])
-    if "precio_base" in mapping:
-        add_to_list(result, "prefer_price_headers", mapping["precio_base"])
-    # postprocess overrides
-    post = profile.get("postprocess") if isinstance(profile.get("postprocess"), dict) else {}
-    # bad_price_headers
-    bph = post.get("bad_price_headers")
-    if bph:
-        add_to_list(result, "bad_price_headers", bph)
-    # prefer_price_headers from postprocess
-    pph = post.get("prefer_price_headers")
-    if pph:
-        add_to_list(result, "prefer_price_headers", pph)
-    # quantity headers from postprocess override quantity hints
-    qh = post.get("quantity_headers")
-    if qh:
-        add_to_list(result, "quantity_hints", qh)
-    # price_hints, code_hints, name_hints can be overridden via postprocess
-    ph = post.get("price_hints")
-    if ph:
-        add_to_list(result, "price_hints", ph)
-    ch = post.get("code_hints")
-    if ch:
-        add_to_list(result, "code_hints", ch)
-    nh = post.get("name_hints")
-    if nh:
-        add_to_list(result, "name_hints", nh)
-    return result
+# Import improved normalisation logic
+from excel_model_improvedOLD import normalise_table, Profile
 import re, numpy as np
 
 DEFAULT_RULES = {
@@ -611,6 +545,53 @@ def suggest_profile_stub(file_name: str, df: pd.DataFrame) -> Dict[str, Any]:
 # ---- Carga perfiles al inicio ----
 PROFILES = load_profiles("profiles")
 
+# Convert the legacy YAML profile dict into a Profile instance understood by
+# excel_model_improved.  The YAML structure contains "mapping" with lists of
+# candidate column names and a "postprocess" section where additional hints or
+# bad headers may be specified.  This helper extracts those hints and builds a
+# dictionary accepted by Profile.from_dict.  Unknown keys are ignored.
+def _convert_profile_for_improved(profile: Optional[Dict[str, Any]]) -> Optional[Profile]:
+    """
+    Translate the structure of a supplier profile loaded from YAML into a
+    Profile instance for the improved normaliser.  This extracts any
+    'prefer_*_headers' from the mapping section and 'bad_price_headers' or
+    hint lists from the postprocess section.
+
+    Parameters
+    ----------
+    profile: dict or None
+        A profile as loaded by load_profiles().  If None or empty, returns None.
+
+    Returns
+    -------
+    Profile or None
+        An instance of excel_model_improved.Profile with the extracted hints,
+        or None if no profile was provided.
+    """
+    if not profile:
+        return None
+    pdict: Dict[str, Any] = {}
+    mapping = profile.get("mapping") or {}
+    # Extract preferred column names from mapping.  Lists of synonyms are
+    # converted into prefer_*_headers lists.
+    if isinstance(mapping, dict):
+        if mapping.get("codigo"):
+            pdict["prefer_code_headers"] = mapping["codigo"]
+        if mapping.get("nombre"):
+            pdict["prefer_name_headers"] = mapping["nombre"]
+        # precio or precio_base may appear; prefer whichever is present.
+        price_syns = mapping.get("precio") or mapping.get("precio_base")
+        if price_syns:
+            pdict["prefer_price_headers"] = price_syns
+    post = profile.get("postprocess") or {}
+    # Copy any supported hint lists or weight overrides from postprocess
+    for key in ["bad_price_headers", "price_hints", "code_hints",
+                "name_hints", "quantity_hints", "weights"]:
+        if key in post:
+            pdict[key] = post[key]
+    # Construct Profile instance; unknown keys in pdict are ignored
+    return Profile.from_dict(pdict)
+
 
 def leer_lista(file_path: str, proveedor: str = "") -> Any:
     """
@@ -640,7 +621,10 @@ def leer_lista(file_path: str, proveedor: str = "") -> Any:
 
     rows = []
     debug = []
-    # factor DSV si el perfil lo define (no aplica acá pero mantenemos)
+    # -----------------------------------------------------------------------
+    # Calcular factor de DSV (descuento sobre valores) a partir del perfil, si existe.
+    # Mantenemos este valor afuera del branch deshabilitado para usarlo tanto
+    # en la lógica mejorada como en la heurística heredada.
     dsv = None
     if profile and isinstance(profile.get("postprocess"), dict):
         try:
@@ -648,55 +632,64 @@ def leer_lista(file_path: str, proveedor: str = "") -> Any:
         except Exception:
             dsv = None
 
+    # --- Mejor normalización usando excel_model_improved ---
+    # Intentamos siempre normalizar todas las tablas con las heurísticas mejoradas.
+    # Si alguna tabla produce un resultado no vacío, lo agregamos y devolvemos
+    # inmediatamente. De este modo se evita la heurística legada si la lógica nueva
+    # logra resolver las columnas.
+    try:
+        imp_prof = _convert_profile_for_improved(profile)
+    except Exception:
+        imp_prof = None
+    improved_rows: List[pd.DataFrame] = []
+    improved_debug: List[Dict[str, Any]] = []
+    for i_idx, block in enumerate(blocks):
+        h = header_row_idx(block)
+        t = relabel_using_header(block, h)
+        try:
+            res = normalise_table(t, profile=imp_prof)
+        except Exception:
+            res = pd.DataFrame(columns=["codigo","nombre","precio"])
+        if not res.empty:
+            # Aplicar factor DSV si corresponde
+            if dsv:
+                try:
+                    res["precio"] = res["precio"].apply(lambda x: round(x*(1+dsv), 2) if pd.notna(x) else None)
+                except Exception:
+                    pass
+            # Filtrar precios que parecen códigos internos (5-6 dígitos)
+            res = res[~res["precio"].astype(str).str.match(r"^\d{5,6}$", na=False)]
+            improved_rows.append(res)
+            improved_debug.append({
+                "tabla": i_idx + 1,
+                "shape": list(t.shape),
+                "cols": list(t.columns),
+                "muestras": res.head(3).to_dict(orient="records")
+            })
+    if improved_rows:
+        # Concatenar todas las filas mejoradas y devolver el resultado
+        try:
+            out_imp = pd.concat(improved_rows, ignore_index=True).drop_duplicates(
+                subset=["codigo", "nombre", "precio"], keep="first"
+            )
+        except Exception:
+            out_imp = pd.DataFrame(columns=["codigo", "nombre", "precio"])
+        result_imp: Dict[str, Any] = {
+            "data": out_imp.to_dict(orient="records"),
+            "debug": improved_debug,
+        }
+        if profile:
+            result_imp["profile_used"] = profile.get("_file")
+        else:
+            result_imp["profile_suggestion"] = suggest_profile_stub(os.path.basename(file_path), df)
+        return result_imp
+
+    # -----------------------------------------------------------------------
+    # Heurística legada: procesar cada bloque si la normalización mejorada no devolvió resultados.
     for idx, block in enumerate(blocks):
         # detectar cabecera dentro del bloque
         hidx = header_row_idx(block)
         tbl = relabel_using_header(block, hidx)
-
-        # ==== Improved normalisation attempt ====
-        # If the improved algorithm is available, try normalising this table.
-        # Only proceed with the legacy heuristics if the improved method
-        # fails to produce any rows.  This allows more robust column
-        # selection for most providers while preserving backwards compatibility.
-        if normalise_table is not None:
-            try:
-                prof_dict = _convert_profile_for_improved(profile)
-            except Exception:
-                prof_dict = None
-            improved_df = None
-            try:
-                improved_df = normalise_table(tbl, profile_dict=prof_dict)
-            except Exception:
-                improved_df = None
-            # If we obtained a non-empty result, use it and skip legacy heuristics
-            if improved_df is not None and not improved_df.empty:
-                # Apply DSV factor to price if present
-                sub = improved_df.copy()
-                if dsv is not None:
-                    try:
-                        sub["precio"] = sub["precio"].map(lambda x: round(x * (1 + dsv), 2) if x is not None else None)
-                    except Exception:
-                        pass
-                # Filter out prices that look like internal codes (5-6 digits)
-                try:
-                    sub = sub[~sub["precio"].astype(str).str.match(r"^\d{5,6}$", na=False)]
-                except Exception:
-                    pass
-                # Keep only required columns
-                use_cols = [c for c in ["codigo", "nombre", "precio"] if c in sub.columns]
-                if use_cols:
-                    rows.append(sub[use_cols])
-                    debug.append({
-                        "tabla": idx + 1,
-                        "shape": list(tbl.shape),
-                        "cols": list(tbl.columns),
-                        # It is not straightforward to determine the original column names selected by the improved algorithm.
-                        # We leave them as None to indicate automatic detection.
-                        "mapping_usado": {"codigo": None, "nombre": None, "precio": None},
-                        "muestras": sub.head(3).to_dict(orient="records")
-                    })
-                    # Skip legacy processing for this block
-                    continue
 
         mapping = profile.get("mapping") if profile else None
         if mapping:

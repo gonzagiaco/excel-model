@@ -1,15 +1,72 @@
 match:
-  names: ["HEPEA","PZ FORCE"]
+  names: ["HEPEA", "PZ FORCE", "KLD", "RICO", "VESUBIO"]
+  sheet_contains: ["LISTA", "HEPEA", "PRECIO", "VENTA"]
+  header_keywords: ["código", "descripcion", "precio", "venta"]
+
 input:
   type: xlsx
   drop_empty_columns: true
+  skip_rows_hint: 5
+
 mapping:
-  codigo: ["CÓDIGO","COD","SKU"]
-  nombre: ["DESCRIPCIÓN","PRODUCTO","DESC"]
-  precio: ["PRECIO","PVP","LISTA"]
+  # Sinónimos de columnas; el código los compara en minúsculas y por "contiene"
+  codigo: ["codigo", "código", "cod", "sku", "art", "item", "ref"]
+  nombre: ["descripcion", "descripción", "detalle", "producto", "nombre", "articulo"]
+  precio:
+    - "precio venta"
+    - "precio"
+    - "venta"
+    - "p. venta"
+    - "p. unitario"
+    - "unitario"
+
 detect:
   by_patterns: true
+  code_regex: "^[A-Z]{2,5}-?[A-Z0-9]{2,6}[A-Z]?$"
+
 transform:
   normalize_price: true
+  join_multiline_descriptions: true
+
 output:
   columns: ["codigo","nombre","precio"]
+
+postprocess:
+  # 1) Orden de preferencia para columnas de PRECIO (la 1era que exista gana)
+  prefer_price_headers:
+    - "precio venta"
+    - "precio"
+    - "venta"
+    - "p. venta"
+    - "unitario"
+
+  # 2) Columnas que NUNCA son precio (se penalizan fuerte)
+  bad_price_headers:
+    - "cantidad"
+    - "unidades"
+    - "und"
+    - "pack"
+    - "x caja"
+    - "cant"
+
+  # 3) Hints para detectar columna de CÓDIGO
+  code_header_hints: ["codigo", "código", "cod", "sku", "art"]
+
+  # 4) Patrones de código, por prioridad (según los 4 proveedores)
+  prefer_code_regex:
+    - "^[A-Z]{2,5}-?[A-Z0-9]{2,6}[A-Z]?$"   # PZ-505H, KLDAFI04, RI101, SD0002
+    - "^[A-Z]{2,}-?\\d{3,}$"                # ABC123, AB-1234
+    - "^[A-Z0-9-]{4,15}$"                   # fallback general
+
+  # 5) Palabras de cantidad (para no confundir con código/precio)
+  quantity_headers: ["pack", "packs", "x caja", "cantidad", "cant", "unid", "und", "unidades"]
+
+  # 6) Valores típicos de cantidad (para penalizar columnas con esos valores)
+  qty_value_set: [1,5,10,20,25,40,50,100,200]
+
+  # 7) Unicidad mínima para considerar que una columna es "código"
+  code_min_uniqueness: 0.25
+
+  # 8) Reglas relacionales
+  rules:
+    prefer_pack_vs_caja: true

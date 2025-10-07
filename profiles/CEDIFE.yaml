@@ -1,7 +1,7 @@
 match:
   names: ["CEDIFE"]
-  sheet_contains: ["LISTA", "Pared Fina", "Pared Media"]
-  header_keywords: ["usd", "descripcion", "codigo", "lista"]
+  sheet_contains: ["Termocontraibles", "Completa", "Lista", "Pared Fina", "Pared Media"]
+  header_keywords: ["usd","u$s","descripcion","descripción","codigo","código","lista","mt","bobina","rollo","caja","pack"]
 
 input:
   type: xlsx
@@ -10,21 +10,27 @@ input:
 
 mapping:
   # Sinónimos de columnas; el código los compara en minúsculas y por "contiene"
-  codigo: ["codigo","código","sku","art","cod","unnamed: 2","unnamed: 3","unnamed: 4"]
-  nombre: ["descripción","descripcion","producto","detalle","descrip","unnamed: 1","medida descripcion"]
+  codigo: ["codigo","código","cód","sku","art","cod"]
+  nombre: ["descripción","descripcion","producto","detalle","descrip","desc","unnamed: 1","medida descripcion"]
   precio:
+    - "usd x mt"
     - "usd lista pack"
     - "usd lista"
-    - "usd x mt"
-    - "usd x bobina"
-    - "usd x caja"
-    - "usd x rollo"
     - "usd"
     - "precio usd"
     - "precio"
     - "p.u. usd"
     - "p.u."
     - "unitario"
+    - "u$s x mt"
+    - "u$s lista pack"
+    - "u$s lista"
+    - "u$s"
+    - "precio u$s"
+    - "p.u. u$s"
+    - "usd + iva"
+    - "u$s + iva"
+    - "u$d + iva"
 
 detect:
   by_patterns: true
@@ -39,34 +45,43 @@ postprocess:
   # 1) Orden de preferencia para columnas de PRECIO (la 1era que exista gana)
   prefer_price_headers:
     - "usd x mt"
+    - "u$s x mt"
     - "usd lista pack"
+    - "u$s lista pack"
     - "usd lista"
-    - "usd x bobina"
-    - "usd x caja"
-    - "usd x rollo"
+    - "u$s lista"
     - "usd"
+    - "u$s"
+    - "usd + iva"
+    - "u$d + iva"
     - "precio usd"
+    - "precio u$s"
     - "precio"
     - "p.u. usd"
+    - "p.u. u$s"
 
   # 2) Columnas que NUNCA son precio (se penalizan fuerte)
   bad_price_headers:
     - "und x pack"
+    - "usd x rollo"
+    - "usd x caja"
+    - "usd x bobina"
     - "packs"
     - "pack"
     - "cantidad"
+    - "cant"
     - "unid"
     - "und"
     - "unidades"
     - "metros x bobina"
 
   # 3) Hints para detectar columna de CÓDIGO (mejor que cantidad)
-  code_header_hints: ["codigo","código","cod","sku","art"]
+  code_header_hints: ["codigo","código","cód","cod","sku","art"]
 
   # 4) Patrones de código, por prioridad
   prefer_code_regex:
-    - "^\d{6}-[A-Z]$"      # 900000-N
-    - "^\d{5,8}$"         # 300580
+    - "^\d{6}-[A-Z]$"          # 900000-N
+    - "^\d{5,8}$"             # 300580
     - "^[A-Za-z]{2,}\d{2,}$"  # ABC123
     - "^\d{3,}-[A-Za-z0-9]{1,3}$"
 
