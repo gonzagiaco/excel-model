@@ -1,0 +1,84 @@
+match:
+  names: ["CEDIFE"]
+  sheet_contains: ["LISTA", "Pared Fina", "Pared Media"]
+  header_keywords: ["usd", "descripcion", "codigo", "lista"]
+
+input:
+  type: xlsx
+  drop_empty_columns: true
+  skip_rows_hint: 8
+
+mapping:
+  # Sinónimos de columnas; el código los compara en minúsculas y por "contiene"
+  codigo: ["codigo","código","sku","art","cod","unnamed: 2","unnamed: 3","unnamed: 4"]
+  nombre: ["descripción","descripcion","producto","detalle","descrip","unnamed: 1","medida descripcion"]
+  precio:
+    - "usd lista pack"
+    - "usd lista"
+    - "usd x mt"
+    - "usd x bobina"
+    - "usd x caja"
+    - "usd x rollo"
+    - "usd"
+    - "precio usd"
+    - "precio"
+    - "p.u. usd"
+    - "p.u."
+    - "unitario"
+
+detect:
+  by_patterns: true
+
+transform:
+  normalize_price: true
+
+output:
+  columns: ["codigo","nombre","precio"]
+
+postprocess:
+  # 1) Orden de preferencia para columnas de PRECIO (la 1era que exista gana)
+  prefer_price_headers:
+    - "usd x mt"
+    - "usd lista pack"
+    - "usd lista"
+    - "usd x bobina"
+    - "usd x caja"
+    - "usd x rollo"
+    - "usd"
+    - "precio usd"
+    - "precio"
+    - "p.u. usd"
+
+  # 2) Columnas que NUNCA son precio (se penalizan fuerte)
+  bad_price_headers:
+    - "und x pack"
+    - "packs"
+    - "pack"
+    - "cantidad"
+    - "unid"
+    - "und"
+    - "unidades"
+    - "metros x bobina"
+
+  # 3) Hints para detectar columna de CÓDIGO (mejor que cantidad)
+  code_header_hints: ["codigo","código","cod","sku","art"]
+
+  # 4) Patrones de código, por prioridad
+  prefer_code_regex:
+    - "^\d{6}-[A-Z]$"      # 900000-N
+    - "^\d{5,8}$"         # 300580
+    - "^[A-Za-z]{2,}\d{2,}$"  # ABC123
+    - "^\d{3,}-[A-Za-z0-9]{1,3}$"
+
+  # 5) Palabras de cantidad (para no confundir con código/precio)
+  quantity_headers: ["pack","packs","x caja","cantidad","cant","unid","und","unidades"]
+
+  # 6) Valores típicos de cantidad (para penalizar columnas con esos valores)
+  qty_value_set: [1,5,10,20,25,40,50,100,200]
+
+  # 7) Unicidad mínima para considerar que una columna es "código"
+  code_min_uniqueness: 0.25
+
+  # 8) Reglas relacionales (precio por pack vs caja)
+  rules:
+    prefer_pack_vs_caja: true

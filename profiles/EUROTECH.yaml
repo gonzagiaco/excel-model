@@ -1,0 +1,15 @@
+match:
+  names: ["EUROTECH"]
+input:
+  type: xlsx
+  drop_empty_columns: true
+mapping:
+  codigo: ["Unnamed: 0"]
+  nombre: ["NOVEDADES AZUL y VERDE -  NUEVOS INGRESOS NARANJA"]
+  precio: ["Pedido Aquí"]
+detect:
+  by_patterns: true
+transform:
+  normalize_price: true
+output:
+  columns: ["codigo","nombre","precio"]

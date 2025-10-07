@@ -1,0 +1,17 @@
+match:
+  filename_patterns: ["IVAN PATI", "PATIÑO", "EXTRA POWER"]
+input:
+  type: csv
+  encoding: latin-1
+  sep: ";"
+  skip_rows_hint: 8
+mapping:
+  codigo: ["Unnamed: 0"]
+  nombre: ["Unnamed: 4"]
+  precio: ["Unnamed: 7"]
+detect:
+  by_patterns: true
+transform:
+  normalize_price: true
+output:
+  columns: ["codigo","nombre","precio"]

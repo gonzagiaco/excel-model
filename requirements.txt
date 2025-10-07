@@ -1,0 +1,9 @@
+pandas
+pyyaml
+fastmcp
+openpyxl
+chardet
+pdfplumber
+python-docx
+fastapi
+uvicorn

@@ -1,0 +1,18 @@
+match:
+  names: ["EMTOP"]
+  sheet_contains: ["LISTA EMTOP"]
+input:
+  type: xlsx
+  drop_empty_columns: true
+mapping:
+  codigo: ["CÓDIGO","CÒDIGO","CODIGO"]
+  nombre: ["DESCRIPCIÓN","DESCRIPCION"]
+  precio: ["PRECIO","PVP","LISTA","Precio Lista"]
+detect:
+  by_patterns: true
+ignore_columns:
+  - ["IVA","Iva","Porcentaje"]
+transform:
+  normalize_price: true
+output:
+  columns: ["codigo","nombre","precio"]

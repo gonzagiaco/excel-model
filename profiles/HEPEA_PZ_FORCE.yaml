@@ -1,0 +1,15 @@
+match:
+  names: ["HEPEA","PZ FORCE"]
+input:
+  type: xlsx
+  drop_empty_columns: true
+mapping:
+  codigo: ["CÓDIGO","COD","SKU"]
+  nombre: ["DESCRIPCIÓN","PRODUCTO","DESC"]
+  precio: ["PRECIO","PVP","LISTA"]
+detect:
+  by_patterns: true
+transform:
+  normalize_price: true
+output:
+  columns: ["codigo","nombre","precio"]

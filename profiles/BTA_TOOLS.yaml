@@ -1,0 +1,19 @@
+match:
+  names: ["BTA TOOLS","BTA"]
+  sheet_contains: ["Lista Precios On-line"]
+input:
+  type: xlsx
+  drop_empty_columns: true
+  skip_rows_hint: 8
+mapping:
+  codigo: ["Unnamed: 0"]
+  nombre: ["Unnamed: 1"]
+  precio_base: ["Unnamed: 3"]
+postprocess:
+  dsv_factor: 0.34
+detect:
+  by_patterns: true
+transform:
+  normalize_price: true
+output:
+  columns: ["codigo","nombre","precio"]

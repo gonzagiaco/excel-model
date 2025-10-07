@@ -1,0 +1,16 @@
+match:
+  filename_patterns: ["Termocontraibles_Cedife"]
+  sheet_contains: ["Pared Fina", "Pared Media"]
+input:
+  type: xlsx
+  drop_empty_columns: true
+mapping:
+  codigo: ["Unnamed: 2","Unnamed: 4"]
+  nombre: ["Unnamed: 1","Unnamed: 2"]
+  precio: ["Unnamed: 3","Precio"]
+detect:
+  by_patterns: true
+transform:
+  normalize_price: true
+output:
+  columns: ["codigo","nombre","precio"]

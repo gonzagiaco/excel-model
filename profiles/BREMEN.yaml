@@ -1,0 +1,16 @@
+match:
+  names: ["BREMEN"]
+  sheet_contains: ["BREMEN", "Tools Argentina"]
+input:
+  type: xlsx
+  drop_empty_columns: true
+detect:
+  by_patterns: true
+  code_regex: "^[A-Za-z0-9\-]{3,20}$"
+  min_text_len_for_nombre: 10
+  price_regex: "^\$?\s*\d{1,3}(\.\d{3})*(,\d{2})?$"
+transform:
+  normalize_price: true
+  remove_currency_symbols: true
+output:
+  columns: ["codigo","nombre","precio"]

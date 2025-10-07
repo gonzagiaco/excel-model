@@ -1,0 +1,13 @@
+match:
+  filename_patterns: ["DIMPAR"]
+  header_keywords: ["CANTIDAD", "CÓDIGO", "DESCRIPCIÓN", "VALOR"]
+input:
+  type: docx
+detect:
+  by_patterns: true
+  code_regex: "^[A-Za-z0-9\- _]{3,20}$"
+transform:
+  normalize_price: true
+  join_multiline_descriptions: true
+output:
+  columns: ["codigo","nombre","precio"]
